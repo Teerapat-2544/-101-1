@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard ข้อมูลผู้บริโภค</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        table {
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+        th, td {
+            padding: 12px 16px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+    <div id="dashboard-content" class="container mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8 text-center">Dashboard ข้อมูลพฤติกรรมผู้บริโภค</h1>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-lg flex items-center justify-between">
+                <div>
+                    <div class="text-sm font-medium text-gray-500">จำนวนผู้ใช้งานทั้งหมด</div>
+                    <div id="total-users" class="text-4xl font-bold text-gray-900 mt-1">...</div>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-lg flex items-center justify-between">
+                <div>
+                    <div class="text-sm font-medium text-gray-500">คะแนนความพึงพอใจเฉลี่ย</div>
+                    <div id="avg-satisfaction" class="text-4xl font-bold text-gray-900 mt-1">...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">จำนวนผู้ใช้งานตามแพลตฟอร์ม</h2>
+            <canvas id="platform-chart"></canvas>
+        </div>
+
+        <!-- Data Table -->
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">ข้อมูลผู้ใช้งานทั้งหมด</h2>
+            <div class="flex justify-end mb-4">
+                <input type="text" id="search-input" placeholder="ค้นหา..." class="w-full md:w-1/3 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white rounded-lg shadow-inner">
+                    <thead class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                        <tr>
+                            <th class="py-3 px-6 text-left rounded-tl-lg">ID</th>
+                            <th class="py-3 px-6 text-left">อายุ</th>
+                            <th class="py-3 px-6 text-left">เพศ</th>
+                            <th class="py-3 px-6 text-left">ระดับรายได้</th>
+                            <th class="py-3 px-6 text-left">การศึกษา</th>
+                            <th class="py-3 px-6 text-left">จังหวัด</th>
+                            <th class="py-3 px-6 text-left">ความถี่</th>
+                            <th class="py-3 px-6 text-left">แพลตฟอร์ม</th>
+                            <th class="py-3 px-6 text-left">ค่าใช้จ่ายเฉลี่ย</th>
+                            <th class="py-3 px-6 text-left">วิธีชำระเงิน</th>
+                            <th class="py-3 px-6 text-left">หมวดหมู่สินค้า</th>
+                            <th class="py-3 px-6 text-left">คะแนนความพึงพอใจ</th>
+                            <th class="py-3 px-6 text-left">แนวโน้มการแนะนำ</th>
+                            <th class="py-3 px-6 text-left rounded-tr-lg">วันล่าสุดที่ซื้อ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body" class="text-gray-600 text-sm font-light">
+                        <!-- Data will be populated here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const dataUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS2LS1-C3Nwt-o58i266GSvuui5d_wnUpkW44TOGAI2AtkrAo8sDBEDldrko8MH4C94aOGyBZxCd7NQ/pub?gid=0&single=true&output=csv';
+            let data = [];
+            const tableBody = document.getElementById('data-table-body');
+            const searchInput = document.getElementById('search-input');
+            const totalUsersCard = document.getElementById('total-users');
+            const avgSatisfactionCard = document.getElementById('avg-satisfaction');
+            const platformChartCanvas = document.getElementById('platform-chart');
+            let platformChart;
+
+            // Function to fetch and process CSV data from URL
+            async function fetchData() {
+                try {
+                    const response = await fetch(dataUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const csvText = await response.text();
+                    data = parseCSV(csvText);
+                    
+                    if (data.length === 0 || Object.keys(data[0]).length === 0) {
+                        throw new Error('ไม่พบข้อมูลหรือข้อมูลในไฟล์ CSV ไม่ถูกต้อง');
+                    }
+                    
+                    renderCards(data);
+                    renderTable(data);
+                    renderChart(data);
+                } catch (error) {
+                    console.error('Error fetching or processing data:', error);
+                    document.body.innerHTML = `<div class="text-center text-red-500 mt-20 text-lg">
+                        เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}<br>
+                        โปรดตรวจสอบ URL ของไฟล์ CSV
+                    </div>`;
+                }
+            }
+
+            // Function to parse CSV text into a structured array of objects
+            function parseCSV(text) {
+                const lines = text.trim().split('\n');
+                const headers = lines[0].split(',').map(header => header.trim());
+                return lines.slice(1).map(line => {
+                    const values = line.split(',');
+                    const row = {};
+                    headers.forEach((header, i) => {
+                        row[header] = values[i] ? values[i].trim() : '';
+                    });
+                    return row;
+                });
+            }
+
+            // Function to render summary cards
+            function renderCards(data) {
+                totalUsersCard.textContent = data.length;
+                const totalSatisfaction = data.reduce((sum, row) => sum + parseFloat(row.satisfaction_score), 0);
+                const avgSatisfaction = (totalSatisfaction / data.length).toFixed(2);
+                avgSatisfactionCard.textContent = avgSatisfaction;
+            }
+
+            // Function to render the data table
+            function renderTable(dataToRender) {
+                tableBody.innerHTML = ''; // Clear existing table rows
+                dataToRender.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'bg-white hover:bg-gray-50';
+                    tr.innerHTML = `
+                        <td class="py-3 px-6 text-left whitespace-nowrap">${row.customer_id}</td>
+                        <td class="py-3 px-6 text-left">${row.age}</td>
+                        <td class="py-3 px-6 text-left">${row.gender}</td>
+                        <td class="py-3 px-6 text-left">${row.income_level}</td>
+                        <td class="py-3 px-6 text-left">${row.education}</td>
+                        <td class="py-3 px-6 text-left">${row.location}</td>
+                        <td class="py-3 px-6 text-left">${row.shopping_frequency}</td>
+                        <td class="py-3 px-6 text-left">${row.preferred_platform}</td>
+                        <td class="py-3 px-6 text-left">${row.avg_spending}</td>
+                        <td class="py-3 px-6 text-left">${row.payment_method}</td>
+                        <td class="py-3 px-6 text-left">${row.product_category}</td>
+                        <td class="py-3 px-6 text-left">${row.satisfaction_score}</td>
+                        <td class="py-3 px-6 text-left">${row.recommendation_likelihood}</td>
+                        <td class="py-3 px-6 text-left">${row.last_purchase_days}</td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+            }
+
+            // Function to render the bar chart
+            function renderChart(data) {
+                const platformCounts = data.reduce((acc, row) => {
+                    acc[row.preferred_platform] = (acc[row.preferred_platform] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const labels = Object.keys(platformCounts);
+                const chartData = Object.values(platformCounts);
+
+                if (platformChart) {
+                    platformChart.destroy();
+                }
+
+                platformChart = new Chart(platformChartCanvas, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'จำนวนผู้ใช้งาน',
+                            data: chartData,
+                            backgroundColor: [
+                                'rgba(75, 192, 192, 0.6)',
+                                'rgba(255, 159, 64, 0.6)',
+                                'rgba(255, 205, 86, 0.6)',
+                                'rgba(54, 162, 235, 0.6)',
+                                'rgba(153, 102, 255, 0.6)',
+                                'rgba(201, 203, 207, 0.6)'
+                            ],
+                            borderColor: [
+                                'rgba(75, 192, 192, 1)',
+                                'rgba(255, 159, 64, 1)',
+                                'rgba(255, 205, 86, 1)',
+                                'rgba(54, 162, 235, 1)',
+                                'rgba(153, 102, 255, 1)',
+                                'rgba(201, 203, 207, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'จำนวนผู้ใช้งาน'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'แพลตฟอร์ม'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Function to filter the table based on search input
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const filteredData = data.filter(row =>
+                    Object.values(row).some(value =>
+                        value.toLowerCase().includes(searchTerm)
+                    )
+                );
+                renderTable(filteredData);
+            });
+
+            // Initial data fetch and rendering
+            fetchData();
+        });
+    </script>
+</body>
+</html>
